@@ -29,3 +29,12 @@ class SensorRepository:
         ).fetchall()
         conn.close()
         return [SensorDataOut(lux=r[0], temperature=r[1], moisture=r[2], timestamp=r[3]) for r in rows]
+
+    def get_by_timerange(self, from_time: str, to_time: str) -> list[SensorDataOut]:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT lux, temperature, moisture, timestamp FROM measurements WHERE timestamp BETWEEN ? AND ?",
+            (from_time, to_time)
+        ).fetchall()
+        conn.close()
+        return [SensorDataOut(lux=r[0], temperature=r[1], moisture=r[2], timestamp=r[3]) for r in rows]

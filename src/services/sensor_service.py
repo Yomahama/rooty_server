@@ -17,3 +17,6 @@ class SensorService:
 
     def get_history(self, limit: int) -> list[SensorDataOut]:
         return self.repo.get_history(limit)
+
+    def get_by_timerange(self, from_time: str, to_time: str) -> list[SensorDataOut]:
+        return self.repo.get_by_timerange(from_time, to_time)
