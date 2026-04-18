@@ -1,6 +1,7 @@
 from repos.plant_repo import PlantRepository
 from models.plant import Plant
 
+
 class PlantService:
     def __init__(self):
         self.repo = PlantRepository()
