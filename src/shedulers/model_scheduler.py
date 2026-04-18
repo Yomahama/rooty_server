@@ -62,5 +62,4 @@ class ModelTrainingScheduler:
         }
 
 
-# Global scheduler instance
 model_scheduler = ModelTrainingScheduler()
