@@ -128,7 +128,7 @@ class PredictionService:
         minutes_until_water = None
         for i, val in enumerate(predicted):
             if val < plant.moisture_min:
-                minutes_until_water = (i + 1)
+                minutes_until_water = i + 1
                 break
 
         last_reading_time = datetime.fromisoformat(readings[-1].timestamp)
@@ -144,7 +144,7 @@ class PredictionService:
                 MoisturePoint(
                     value=val,
                     timestamp=(last_reading_time +
-                               timedelta(minutes=(i + 1))).isoformat()
+                               timedelta(minutes=i + 1)).isoformat()
                 )
                 for i, val in enumerate(predicted)
             ],
