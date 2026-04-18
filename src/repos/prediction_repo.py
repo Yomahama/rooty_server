@@ -4,6 +4,7 @@ from models.sensor import SensorDataOut
 
 CSV_PATH = "mocked_data.csv"
 
+
 class PredictionRepository:
     def get_all(self) -> list[SensorDataOut]:
         readings = []

@@ -5,9 +5,11 @@ from models.plant import Plant
 plant_service = PlantService()
 router = APIRouter(prefix="/api")
 
+
 @router.get("/plants", response_model=list[Plant])
 def get_plants():
     return plant_service.get_all()
+
 
 @router.get("/plants/{plant_id}", response_model=Plant)
 def get_plant(plant_id: int):

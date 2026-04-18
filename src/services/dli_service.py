@@ -6,6 +6,7 @@ from repos.plant_repo import PlantRepository
 
 LUX_TO_PPFD = 0.0185
 
+
 class DliService:
     def __init__(self):
         self.sensor_service = SensorService()

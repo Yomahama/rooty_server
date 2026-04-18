@@ -7,8 +7,10 @@ DEFAULT_PLANTS = [
     ("Salotos",   10, 14, 15, 22, 60, 75),
 ]
 
+
 def get_connection():
     return sqlite3.connect(settings.db_file)
+
 
 def init_db():
     conn = get_connection()

@@ -1,6 +1,7 @@
 from core.database import get_connection
 from models.sensor import SensorDataOut
 
+
 class SensorRepository:
     def save(self, lux: float, temperature: float, moisture: int, timestamp: str) -> None:
         conn = get_connection()

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 import csv
 import numpy as np
 
+
 def generate(days: int = 14, interval_min: int = 1, output: str = "mocked_data.csv"):
     now = datetime.now()
     start = now - timedelta(days=days)
@@ -20,7 +21,8 @@ def generate(days: int = 14, interval_min: int = 1, output: str = "mocked_data.c
             lux = round(float(peak * 4500 + np.random.uniform(-200, 200)), 1)
             lux = max(0.0, lux)
 
-        temperature = round(float(18 + 8 * np.sin(np.pi * (hour - 6) / 12) + np.random.uniform(-1, 1)), 1)
+        temperature = round(
+            float(18 + 8 * np.sin(np.pi * (hour - 6) / 12) + np.random.uniform(-1, 1)), 1)
 
         moisture -= np.random.uniform(0.05, 0.2)
         if moisture < 40:
@@ -36,11 +38,13 @@ def generate(days: int = 14, interval_min: int = 1, output: str = "mocked_data.c
         current += interval
 
     with open(output, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["lux", "temperature", "moisture", "timestamp"])
+        writer = csv.DictWriter(
+            f, fieldnames=["lux", "temperature", "moisture", "timestamp"])
         writer.writeheader()
         writer.writerows(rows)
 
     print(f"Sugeneruota {len(rows)} eilučių -> {output}")
+
 
 if __name__ == "__main__":
     generate()
