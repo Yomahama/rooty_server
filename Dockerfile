@@ -6,9 +6,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
-COPY *.db ./
-COPY *.keras ./
-COPY *.csv ./
+
+# Copy optional files if they exist
+COPY data.d[b] ./
+COPY sensor_lstm.kera[s] ./
+COPY mocked_data.cs[v] ./
 
 ENV PYTHONPATH=/app/src
 

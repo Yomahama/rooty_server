@@ -29,9 +29,7 @@ services:
     ports:
       - "8001:8001"
     volumes:
-      - ./data.db:/app/data.db
-      - ./sensor_lstm.keras:/app/sensor_lstm.keras
-      - ./mocked_data.csv:/app/mocked_data.csv
+      - app_data:/app
     environment:
       - PYTHONPATH=/app/src
     command: uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload
@@ -45,8 +43,7 @@ services:
     build: .
     container_name: rooty_mqtt_client
     volumes:
-      - ./data.db:/app/data.db
-      - ./sensor_lstm.keras:/app/sensor_lstm.keras
+      - app_data:/app
     environment:
       - PYTHONPATH=/app/src
       - MQTT_BROKER_HOST=mosquitto
@@ -61,6 +58,7 @@ services:
 volumes:
   mosquitto_data:
   mosquitto_logs:
+  app_data:
 
 networks:
   rooty_network:
