@@ -50,14 +50,17 @@ class LSTMHyperparameters:
 @dataclass(frozen=True)
 class PredictionConfig:
     """Configuration for prediction behavior."""
-    horizon_minutes: int = 1440  # 24 hours
+    horizon_steps: int = 864  # 3 days at 5-min intervals (3 * 24 * 12)
+    interval_minutes: int = 5
     retrain_interval_hours: int = 24
     min_training_samples: int = 145  # sequence_length + 1
 
     def __post_init__(self):
         """Validate prediction configuration."""
-        if self.horizon_minutes <= 0:
-            raise ValueError("horizon_minutes must be positive")
+        if self.horizon_steps <= 0:
+            raise ValueError("horizon_steps must be positive")
+        if self.interval_minutes <= 0:
+            raise ValueError("interval_minutes must be positive")
         if self.retrain_interval_hours <= 0:
             raise ValueError("retrain_interval_hours must be positive")
 

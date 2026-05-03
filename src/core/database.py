@@ -21,6 +21,7 @@ def init_db():
             lux         REAL,
             temperature REAL,
             moisture    INTEGER,
+            battery     INTEGER,
             timestamp   TEXT
         )
     """)

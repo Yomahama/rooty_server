@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: rooty_mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_logs:/mosquitto/log
+    restart: unless-stopped
+    networks:
+      - rooty_network
+
+  fastapi:
+    build: .
+    container_name: rooty_fastapi
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./data.db:/app/data.db
+      - ./sensor_lstm.keras:/app/sensor_lstm.keras
+      - ./mocked_data.csv:/app/mocked_data.csv
+    environment:
+      - PYTHONPATH=/app/src
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+    networks:
+      - rooty_network
+
+  mqtt_client:
+    build: .
+    container_name: rooty_mqtt_client
+    volumes:
+      - ./data.db:/app/data.db
+      - ./sensor_lstm.keras:/app/sensor_lstm.keras
+    environment:
+      - PYTHONPATH=/app/src
+      - MQTT_BROKER_HOST=mosquitto
+    command: python src/mqtt_client.py
+    depends_on:
+      - mosquitto
+      - fastapi
+    restart: unless-stopped
+    networks:
+      - rooty_network
+
+volumes:
+  mosquitto_data:
+  mosquitto_logs:
+
+networks:
+  rooty_network:
+    driver: bridge

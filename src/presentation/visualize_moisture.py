@@ -1,202 +1,149 @@
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from datetime import datetime
 import sys
 import os
-from datetime import datetime
-from typing import List, Tuple
 
-from scipy.interpolate import UnivariateSpline, CubicSpline
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
-import numpy as np
-
-from services.prediction_service import PredictionService
-from services.plant_service import PlantService
-from models.watering_prediction import MoisturePoint
-
-
-# Add src to path for relative imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-
-def create_spline_interpolation(data_points: List[MoisturePoint],
-                                num_points: int = 300,
-                                smoothing: float | None = None) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Create smooth spline interpolation using SciPy.
-
-    Args:
-        data_points: List of MoisturePoint objects
-        num_points: Number of points for smooth curve
-        smoothing: Smoothing factor for UnivariateSpline (None for exact interpolation)
-
-    Returns:
-        Tuple of (time_array, moisture_array) for plotting
-    """
-    if len(data_points) < 2:
-        timestamps = [datetime.fromisoformat(p.timestamp) for p in data_points]
-        values = [p.value for p in data_points]
-        return np.array(timestamps), np.array(values)
-
-    # Convert to numeric arrays
-    timestamps = [datetime.fromisoformat(
-        p.timestamp).timestamp() for p in data_points]
-    values = [p.value for p in data_points]
-
-    timestamps = np.array(timestamps)
-    values = np.array(values)
-
-    # Use CubicSpline for exact interpolation or UnivariateSpline for smoothing
-    if smoothing is None:
-        # Exact interpolation through all points
-        spline = CubicSpline(timestamps, values)
-    else:
-        # Smoothing spline (may not pass through all points exactly)
-        spline = UnivariateSpline(timestamps, values, s=smoothing)
-
-    # Generate dense points for smooth curve
-    t_smooth = np.linspace(timestamps.min(), timestamps.max(), num_points)
-    y_smooth = spline(t_smooth)
-
-    # Clamp values to reasonable moisture range
-    y_smooth = np.clip(y_smooth, 0, 100)
-
-    # Convert back to datetime objects
-    time_smooth = [datetime.fromtimestamp(t) for t in t_smooth]
-
-    return np.array(time_smooth), y_smooth
+from services.plant_service import PlantService
+from services.prediction_service import PredictionService
 
 
 def visualize_moisture_prediction(plant_id: int = 1):
-    """
-    Create and display moisture prediction visualization.
-
-    Args:
-        plant_id: ID of the plant to visualize
-    """
-    # Initialize services
     prediction_service = PredictionService()
     plant_service = PlantService()
 
-    # Get plant and prediction data
     plant = plant_service.get_by_id(plant_id)
     if not plant:
         print(f"Plant {plant_id} not found!")
         return
 
+    monthly_readings = prediction_service.get_recent(hours=24 * 30)
     prediction = prediction_service.get_watering_prediction(plant)
 
-    print(f"📊 Generating chart for Plant {plant_id}")
-    print(f"   Current moisture: {prediction.current_moisture}%")
-    print(f"   Historical points: {len(prediction.historical)}")
-    print(f"   Predicted points: {len(prediction.predicted)}")
+    print(f"Generating chart for Plant {plant_id}")
+    print(f"  Current moisture: {prediction.current_moisture}%")
+    print(f"  Monthly readings: {len(monthly_readings)}")
+    print(f"  Predicted points: {len(prediction.predicted)}")
 
-    # Create figure with high DPI for crisp display
-    _, ax = plt.subplots(figsize=(14, 8), dpi=100)
+    hist_timestamps = mdates.date2num(
+        [datetime.fromisoformat(r.timestamp) for r in monthly_readings])
+    hist_moisture = [r.moisture for r in monthly_readings]
+    hist_temp = [r.temperature for r in monthly_readings]
+    hist_lux = [r.lux for r in monthly_readings]
 
-    # Generate smooth curves using spline interpolation
-    hist_time, hist_smooth = create_spline_interpolation(
-        prediction.historical, 300)
-    pred_time, pred_smooth = create_spline_interpolation(
-        prediction.predicted, 200)
+    pred_timestamps = mdates.date2num(
+        [datetime.fromisoformat(p.timestamp) for p in prediction.predicted])
+    pred_moisture = [p.value for p in prediction.predicted]
 
-    # Plot smooth curves
-    ax.plot(hist_time, hist_smooth,
-            color='#2563eb', linewidth=2, alpha=0.9,
-            label='Historical (Spline Interpolation)', zorder=3)
+    fig, ax_moist = plt.subplots(figsize=(16, 7), dpi=100)
 
-    ax.plot(pred_time, pred_smooth,
-            color='#2563eb', linewidth=2, alpha=0.9, linestyle='--',
-            label='Predicted (Spline Interpolation)', zorder=3)
+    # Twin axes for temperature and lux
+    ax_temp = ax_moist.twinx()
+    ax_lux = ax_moist.twinx()
+    ax_lux.spines['right'].set_position(('outward', 70))
 
-    # Add separator line between historical and predicted data
-    if prediction.historical:
-        separator_time = datetime.fromisoformat(
-            prediction.historical[-1].timestamp)
-        # Convert datetime to matplotlib date number for axvline
-        separator_mpl: float = float(mdates.date2num(separator_time))
-        ax.axvline(x=separator_mpl, color='#f59e0b', linestyle='-',
-                   linewidth=3, alpha=0.8, label='Historical/Prediction Separator')
+    # --- Lux (thin line, historical only) ---
+    lux_line, = ax_lux.plot(
+        hist_timestamps, hist_lux,
+        color='#f59e0b', linewidth=0.8, alpha=0.6, label='Lux'
+    )
+    ax_lux.set_ylabel('Lux', color='#f59e0b', fontsize=10)
+    ax_lux.tick_params(axis='y', labelcolor='#f59e0b')
+    ax_lux.set_ylim(bottom=0)
 
-    # Add threshold lines
-    all_times = list(hist_time) + list(pred_time)
-    time_range = [min(all_times), max(all_times)]
+    # --- Temperature (thick line, historical only) ---
+    temp_line, = ax_temp.plot(
+        hist_timestamps, hist_temp,
+        color='#dc2626', linewidth=2.5, alpha=0.8, label='Temperature (°C)'
+    )
+    ax_temp.set_ylabel('Temperature (°C)', color='#dc2626', fontsize=10)
+    ax_temp.tick_params(axis='y', labelcolor='#dc2626')
 
-    ax.axhline(y=plant.moisture_min, color='#dc2626', linestyle=':',
-               linewidth=2, alpha=0.8, label=f'Min Threshold ({plant.moisture_min}%)')
-    ax.axhline(y=plant.moisture_max, color='#16a34a', linestyle=':',
-               linewidth=2, alpha=0.8, label=f'Max Threshold ({plant.moisture_max}%)')
+    # --- Moisture historical ---
+    moist_hist_line, = ax_moist.plot(
+        hist_timestamps, hist_moisture,
+        color='#2563eb', linewidth=1.8, alpha=0.9, label='Moisture (historical)'
+    )
 
-    # Fill area below minimum threshold
-    ax.fill_between(time_range, 0, plant.moisture_min,
-                    color='#dc2626', alpha=0.1, label='Critical Zone')
+    # --- Moisture prediction ---
+    moist_pred_line, = ax_moist.plot(
+        pred_timestamps, pred_moisture,
+        color='#2563eb', linewidth=1.8, alpha=0.9, linestyle='--',
+        label='Moisture (predicted)'
+    )
 
-    # Styling
-    ax.set_title(f'🌱 Moisture Prediction for Plant {plant_id}\n'
-                 f'Current: {prediction.current_moisture}% | '
-                 f'Watering needed in: {prediction.minutes_until_water or "Not needed"} minutes',
-                 fontsize=16, fontweight='bold', pad=20)
+    # --- Separator: historical / prediction ---
+    if len(hist_timestamps):
+        sep_mpl = float(hist_timestamps[-1])
+        ax_moist.axvline(
+            x=sep_mpl, color='#f59e0b', linestyle='-',
+            linewidth=2.5, alpha=0.8, label='Now'
+        )
 
-    ax.set_xlabel('Time', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Moisture (%)', fontsize=12, fontweight='bold')
+    # --- Min / Max thresholds ---
+    ax_moist.axhline(
+        y=plant.moisture_min, color='#dc2626', linestyle=':',
+        linewidth=1.8, alpha=0.8, label=f'Min ({plant.moisture_min}%)'
+    )
+    ax_moist.axhline(
+        y=plant.moisture_max, color='#16a34a', linestyle=':',
+        linewidth=1.8, alpha=0.8, label=f'Max ({plant.moisture_max}%)'
+    )
 
-    ax.set_ylim(0, 100)
-    ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
+    # --- Styling ---
+    watering_text = (
+        f"{prediction.minutes_until_water // 60}h {prediction.minutes_until_water % 60}min"
+        if prediction.minutes_until_water else "not needed"
+    )
+    ax_moist.set_title(
+        f'Plant {plant_id} — moisture, temperature, lux\n'
+        f'Current moisture: {prediction.current_moisture}%  |  '
+        f'Watering needed in: {watering_text}',
+        fontsize=13, fontweight='bold', pad=14
+    )
+    ax_moist.set_xlabel('Date', fontsize=11)
+    ax_moist.set_ylabel('Moisture (%)', color='#2563eb',
+                        fontsize=11, fontweight='bold')
+    ax_moist.tick_params(axis='y', labelcolor='#2563eb')
+    ax_moist.set_ylim(0, 100)
+    ax_moist.grid(True, alpha=0.25, linestyle='-', linewidth=0.5)
 
-    # Format x-axis
-    ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))
-    ax.xaxis.set_minor_locator(mdates.HourLocator())
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    ax_moist.xaxis.set_major_locator(mdates.DayLocator(interval=3))
+    ax_moist.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
+    plt.setp(ax_moist.get_xticklabels(), rotation=45, ha='right')
 
-    # Rotate x-axis labels for better readability
-    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+    # Combined legend (moisture axis owns it)
+    all_lines = [moist_hist_line, moist_pred_line, temp_line, lux_line]
+    ax_moist.legend(
+        handles=all_lines,
+        loc='upper left', frameon=True, fancybox=True, shadow=True, fontsize=10
+    )
 
-    # Legend
-    ax.legend(loc='best', frameon=True,
-              fancybox=True, shadow=True, fontsize=10)
-
-    # Tight layout
     plt.tight_layout()
-
-    # Add statistics text box
-    stats_text = (f'Statistics:\n'
-                  f'• Data Points: {len(prediction.historical + prediction.predicted)}\n'
-                  f'• Time Range: {len(prediction.historical + prediction.predicted)} minutes\n'
-                  f'• Interpolation: Cubic Spline (SciPy)\n'
-                  f'• Curve Points: {len(hist_smooth) + len(pred_smooth)}')
-
-    ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
-            fontsize=9, verticalalignment='top',
-            bbox={'boxstyle': 'round,pad=0.5', 'facecolor': 'lightgray', 'alpha': 0.8})
-
-    print("🎯 Chart generated successfully!")
-    print("📈 Displaying interactive plot...")
-
-    # Show plot
     plt.show()
 
 
 def main():
-    """Main entry point for the script."""
     plant_id = 1
-
-    # Parse command line arguments
     if len(sys.argv) > 1:
         try:
             plant_id = int(sys.argv[1])
         except ValueError:
-            print("❌ Invalid plant ID. Using default plant ID = 1")
+            print("Invalid plant ID, using default plant ID = 1")
 
-    print(f"🚀 Starting moisture visualization for plant {plant_id}...")
-
+    print(f"Starting moisture visualization for plant {plant_id}...")
     try:
         visualize_moisture_prediction(plant_id)
     except FileNotFoundError as e:
-        print(f"❌ File not found: {e}")
+        print(f"File not found: {e}")
         sys.exit(1)
     except ImportError as e:
-        print(f"❌ Import error: {e}")
+        print(f"Import error: {e}")
         sys.exit(1)
     except ValueError as e:
-        print(f"❌ Value error: {e}")
+        print(f"Value error: {e}")
         sys.exit(1)
 
 

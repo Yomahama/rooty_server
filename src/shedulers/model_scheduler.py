@@ -3,8 +3,8 @@ import os
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from src.config.prediction_config import LSTMPredictionConfig
-from src.services.prediction_service import PredictionService
+from config.prediction_config import LSTMPredictionConfig
+from services.prediction_service import PredictionService
 
 
 class ModelTrainingScheduler:

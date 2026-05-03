@@ -14,7 +14,7 @@ class PredictionRepository:
                 readings.append(SensorDataOut(
                     lux=float(row["lux"]),
                     temperature=float(row["temperature"]),
-                    moisture=int(row["moisture"]),
+                    moisture=int(float(row["moisture"])),
                     timestamp=row["timestamp"]
                 ))
         return readings

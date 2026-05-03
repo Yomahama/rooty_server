@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sed -i '' 's/[[:space:]]*$//' /Users/rimaspauliukevicius/Desktop/projects/rooty_server/src/mqtt_client.py)",
+      "Bash(brew services start mosquitto)",
+      "Bash(source .venv/bin/activate)",
+      "Bash(pip install paho-mqtt)",
+      "Bash(.venv/bin/python test_mqtt.py)",
+      "Bash(brew services list)",
+      "Bash(brew services restart mosquitto)",
+      "Read(/opt/homebrew/etc/mosquitto/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

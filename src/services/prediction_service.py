@@ -78,6 +78,30 @@ class PredictionService:
                   verbose="1", validation_split=hyper.validation_split)
         model.save(self.config.model_path)
 
+    def _expected_conditions_at(self, dt: datetime) -> tuple[float, float]:
+        """Estimate temperature and lux at a future datetime based on time of day."""
+        time_of_day = dt.hour + dt.minute / 60.0
+
+        if 7.0 <= time_of_day <= 21.0:
+            temp = 19.0 + 7.0 * np.sin(np.pi * (time_of_day - 7.0) / 14.0)
+        else:
+            temp = 19.5
+
+        if 7.0 <= time_of_day <= 19.0:
+            lux = max(0.0, np.sin(np.pi * (time_of_day - 7.0) / 12.0) * 4000.0)
+        else:
+            lux = 5.0
+
+        return float(temp), float(lux)
+
+    def _normalize_temp_lux(self, temp: float, lux: float) -> tuple[float, float]:
+        norm_cfg = self.config.normalization
+        norm_temp = (temp - norm_cfg.temperature_min) / \
+            (norm_cfg.temperature_max - norm_cfg.temperature_min)
+        norm_lux = (lux - norm_cfg.lux_min) / \
+            (norm_cfg.lux_max - norm_cfg.lux_min)
+        return norm_temp, norm_lux
+
     def predict(self, readings: list) -> list[float]:
         model = load_model(self.config.model_path)
 
@@ -94,10 +118,13 @@ class PredictionService:
 
         features = self._normalize_features(moisture, temperature, lux)
 
+        last_timestamp = datetime.fromisoformat(recent_readings[-1].timestamp)
+        interval_minutes = self.config.prediction.interval_minutes
+
         predictions = []
         current_features = features.copy()
 
-        for _ in range(self.config.prediction.horizon_minutes):
+        for step in range(self.config.prediction.horizon_steps):
             x = current_features[-seq_len:].reshape(
                 (1, seq_len, self.config.hyperparameters.feature_count))
             next_moisture = model.predict(x, verbose=0)[0][0]  # type: ignore
@@ -106,11 +133,14 @@ class PredictionService:
                 self._denormalize_moisture(np.array([next_moisture]))[0])
             predictions.append(round(actual_moisture, 1))
 
-            last_temp = current_features[-1, 1]
-            last_lux = current_features[-1, 2]
+            future_dt = last_timestamp + \
+                timedelta(minutes=(step + 1) * interval_minutes)
+            future_temp, future_lux = self._expected_conditions_at(future_dt)
+            norm_temp, norm_lux = self._normalize_temp_lux(
+                future_temp, future_lux)
 
             next_feature_vector = np.array(
-                [next_moisture, last_temp, last_lux])
+                [next_moisture, norm_temp, norm_lux])
             current_features = np.vstack(
                 [current_features, next_feature_vector])
 
@@ -125,10 +155,11 @@ class PredictionService:
 
         predicted = self.predict(readings)
 
+        interval_minutes = self.config.prediction.interval_minutes
         minutes_until_water = None
         for i, val in enumerate(predicted):
             if val < plant.moisture_min:
-                minutes_until_water = i + 1
+                minutes_until_water = (i + 1) * interval_minutes
                 break
 
         last_reading_time = datetime.fromisoformat(readings[-1].timestamp)
@@ -144,7 +175,7 @@ class PredictionService:
                 MoisturePoint(
                     value=val,
                     timestamp=(last_reading_time +
-                               timedelta(minutes=i + 1)).isoformat()
+                               timedelta(minutes=(i + 1) * interval_minutes)).isoformat()
                 )
                 for i, val in enumerate(predicted)
             ],
