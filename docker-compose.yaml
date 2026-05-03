@@ -8,9 +8,17 @@ services:
       - "1883:1883"
       - "9001:9001"
     volumes:
-      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
       - mosquitto_data:/mosquitto/data
       - mosquitto_logs:/mosquitto/log
+    environment:
+      - MOSQUITTO_USERNAME=
+      - MOSQUITTO_PASSWORD=
+    command: |
+      sh -c "
+        echo 'listener 1883' > /mosquitto/config/mosquitto.conf &&
+        echo 'allow_anonymous true' >> /mosquitto/config/mosquitto.conf &&
+        mosquitto -c /mosquitto/config/mosquitto.conf
+      "
     restart: unless-stopped
     networks:
       - rooty_network
