@@ -75,7 +75,7 @@ class MQTTSensorClient:
         model_scheduler.start_scheduler()
         logger.info("Model scheduler started")
 
-        self.client = mqtt.Client(client_id="rooty_server")
+        self.client = mqtt.Client(client_id="rooty_esp32")
         self.client.on_connect = self.on_connect
         self.client.on_disconnect = self.on_disconnect
         self.client.on_message = self.on_message
