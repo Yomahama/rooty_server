@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class MQTTSensorClient:
     def __init__(self, broker_host: Optional[str] = None, broker_port: int = 1883, topic: str = "rooty/sensors"):
-        self.broker_host = broker_host or os.getenv("MQTT_BROKER_HOST", "localhost")
+        self.broker_host = broker_host or os.getenv("MQTT_BROKER_HOST", "rooty-dev.poolup.lt/mqtt")
         self.broker_port = broker_port
         self.topic = topic
         self.sensor_service = SensorService()
