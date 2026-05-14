@@ -8,7 +8,10 @@
       "Bash(.venv/bin/python test_mqtt.py)",
       "Bash(brew services list)",
       "Bash(brew services restart mosquitto)",
-      "Read(/opt/homebrew/etc/mosquitto/**)"
+      "Read(/opt/homebrew/etc/mosquitto/**)",
+      "Bash(pylint src/mqtt_client.py)",
+      "Bash(pip install pylint)",
+      "Bash(PYTHONPATH=src pylint src/mqtt_client.py)"
     ],
     "deny": [],
     "ask": []

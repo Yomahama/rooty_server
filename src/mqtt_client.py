@@ -11,7 +11,7 @@ from shedulers.model_scheduler import model_scheduler
 logger = logging.getLogger(__name__)
 
 class MQTTSensorClient:
-    def __init__(self, broker_host: str = None, broker_port: int = 1883, topic: str = "rooty/sensors"):
+    def __init__(self, broker_host: Optional[str] = None, broker_port: int = 1883, topic: str = "rooty/sensors"):
         self.broker_host = broker_host or os.getenv("MQTT_BROKER_HOST", "localhost")
         self.broker_port = broker_port
         self.topic = topic
@@ -53,10 +53,12 @@ class MQTTSensorClient:
 
         except json.JSONDecodeError as e:
             logger.error("Invalid JSON received: %s. Error: %s", payload or "unknown", e)
-        except ValueError as e:
-            logger.error("Invalid sensor data format: %s. Error: %s", payload or "unknown", e)
         except (UnicodeDecodeError, AttributeError) as e:
             logger.error("Error decoding message payload: %s", e)
+        except ValueError as e:
+            logger.error("Invalid sensor data format: %s. Error: %s", payload or "unknown", e)
+        except (ConnectionError, OSError) as e:
+            logger.error("Database connection error processing message: %s", e)
         except Exception as e:
             logger.error("Unexpected error processing message: %s", e)
 
@@ -87,7 +89,7 @@ class MQTTSensorClient:
         except KeyboardInterrupt:
             logger.info("Shutting down MQTT client...")
             self.stop()
-        except ConnectionError as e:
+        except (ConnectionError, OSError) as e:
             logger.error("Failed to connect to MQTT broker: %s", e)
         except Exception as e:
             logger.error("Error starting MQTT client: %s", e)
