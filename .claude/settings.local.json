@@ -11,7 +11,13 @@
       "Read(/opt/homebrew/etc/mosquitto/**)",
       "Bash(pylint src/mqtt_client.py)",
       "Bash(pip install pylint)",
-      "Bash(PYTHONPATH=src pylint src/mqtt_client.py)"
+      "Bash(PYTHONPATH=src pylint src/mqtt_client.py)",
+      "Bash(python src/mqtt_client.py)",
+      "Bash(PYTHONPATH=src python src/mqtt_client.py)",
+      "Bash(.venv/bin/python --version)",
+      "Bash(.venv/bin/python -c \"import paho.mqtt.client; print(''paho-mqtt available'')\")",
+      "Bash(.venv/bin/python -c \"import sys; sys.path.insert(0, ''src''); import mqtt_client; print(''Import successful'')\")",
+      "Bash(.venv/bin/python -c \"\nimport sys\nsys.path.insert(0, ''src'')\nfrom mqtt_client import MQTTSensorClient\nclient = MQTTSensorClient()\nprint(''MQTT client initialized successfully'')\nprint(f''Host: {client.broker_host}:{client.broker_port}'')\n\")"
     ],
     "deny": [],
     "ask": []

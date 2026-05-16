@@ -49,7 +49,7 @@ services:
       - app_data:/app
     environment:
       - PYTHONPATH=/app/src
-      - MQTT_BROKER_HOST=mosquitto
+      - MQTT_BROKER_HOST=mqtt.poolup.lt
     command: python src/mqtt_client.py
     depends_on:
       - mosquitto

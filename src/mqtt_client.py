@@ -11,8 +11,8 @@ from shedulers.model_scheduler import model_scheduler
 logger = logging.getLogger(__name__)
 
 class MQTTSensorClient:
-    def __init__(self, broker_host: Optional[str] = None, broker_port: int = 1883, topic: str = "rooty/sensors"):
-        self.broker_host = broker_host or os.getenv("MQTT_BROKER_HOST", "rooty-dev.poolup.lt/mqtt")
+    def __init__(self, broker_host: Optional[str] = None, broker_port: int = 443, topic: str = "rooty/sensors"):
+        self.broker_host = broker_host or os.getenv("MQTT_BROKER_HOST", "mqtt.poolup.lt")
         self.broker_port = broker_port
         self.topic = topic
         self.sensor_service = SensorService()
@@ -75,14 +75,15 @@ class MQTTSensorClient:
         model_scheduler.start_scheduler()
         logger.info("Model scheduler started")
 
-        self.client = mqtt.Client(client_id="rooty_esp32")
+        self.client = mqtt.Client(client_id="rooty_esp32", transport="websockets")
         self.client.on_connect = self.on_connect
         self.client.on_disconnect = self.on_disconnect
         self.client.on_message = self.on_message
         self.client.on_log = self.on_log
+        self.client.tls_set()
 
         try:
-            logger.info("Connecting to MQTT broker at %s:%s", self.broker_host, self.broker_port)
+            logger.info("Connecting to MQTT broker via WebSocket at %s:%s", self.broker_host, self.broker_port)
             self.client.connect(self.broker_host, self.broker_port, 60)
             self.client.loop_forever()
 
