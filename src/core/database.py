@@ -15,6 +15,8 @@ def get_connection():
 def init_db():
     conn = get_connection()
 
+    conn.execute("DROP TABLE IF EXISTS measurements")
+
     conn.execute("""
         CREATE TABLE IF NOT EXISTS measurements (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,6 +24,8 @@ def init_db():
             temperature REAL,
             moisture    INTEGER,
             battery     INTEGER,
+            humidity    REAL,
+            soil_temp   REAL,
             timestamp   TEXT
         )
     """)

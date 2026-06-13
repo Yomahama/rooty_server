@@ -81,6 +81,8 @@ def generate(days: int = 25, interval_min: int = 5, output: str = "mocked_data.c
             "lux": lux,
             "temperature": temperature,
             "moisture": moisture,
+            "humidity": 0.0,
+            "soil_temp": 0.0,
             "timestamp": current.isoformat()
         })
         current += interval
@@ -88,7 +90,7 @@ def generate(days: int = 25, interval_min: int = 5, output: str = "mocked_data.c
 
     with open(output, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
-            f, fieldnames=["lux", "temperature", "moisture", "timestamp"])
+            f, fieldnames=["lux", "temperature", "moisture", "humidity", "soil_temp", "timestamp"])
         writer.writeheader()
         writer.writerows(rows)
 

@@ -4,8 +4,10 @@ from pydantic import BaseModel
 class SensorDataIn(BaseModel):
     lux: float
     temperature: float
-    moisture: int  # in %
-    battery: int  # in %
+    moisture: int
+    battery: int
+    humidity: float
+    soil_temp: float
 
 
 class SensorDataOut(SensorDataIn):

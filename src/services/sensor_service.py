@@ -9,9 +9,9 @@ class SensorService:
 
     def save_reading(self, data: SensorDataIn) -> SensorDataOut:
         timestamp = datetime.now().isoformat()
-        self.repo.save(data.lux, data.temperature, data.moisture, data.battery, timestamp)
+        self.repo.save(data, timestamp)
         print(
-            f"[{timestamp}] lux={data.lux}, temperature={data.temperature}, moisture={data.moisture}%, battery={data.battery}%")
+            f"[{timestamp}] lux={data.lux}, temperature={data.temperature}, moisture={data.moisture}%, battery={data.battery}%, humidity={data.humidity}%, soil_temp={data.soil_temp}")
         return SensorDataOut(**data.model_dump(), timestamp=timestamp)
 
     def get_latest(self) -> SensorDataOut | None:

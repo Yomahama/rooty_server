@@ -15,8 +15,10 @@ class PredictionRepository:
                     lux=float(row["lux"]),
                     temperature=float(row["temperature"]),
                     moisture=int(float(row["moisture"])),
+                    battery=int(float(row.get("battery", 0))),
+                    humidity=float(row.get("humidity", 0.0)),
+                    soil_temp=float(row.get("soil_temp", 0.0)),
                     timestamp=row["timestamp"],
-                    battery=int(float(row["battery"]))
                 ))
         return readings
 
