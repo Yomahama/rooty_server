@@ -6,17 +6,12 @@ services:
     container_name: rooty_fastapi
     ports:
       - "8001:8001"
-    volumes:
-      - app_data:/app
     environment:
       - PYTHONPATH=/app/src
     command: uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload
     restart: unless-stopped
     networks:
       - rooty_network
-
-volumes:
-  app_data:
 
 networks:
   rooty_network:
