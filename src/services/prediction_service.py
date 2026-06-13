@@ -33,7 +33,7 @@ class PredictionService:
     def get_recent(self, hours: int = 24):
         return self.repo.get_recent(hours)
 
-    def train(self, readings: list = []) -> None:
+    def train(self, readings: list | None = None) -> None:
         if readings is None:
             readings = self.repo.get_all()
 

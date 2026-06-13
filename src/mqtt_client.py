@@ -6,7 +6,6 @@ import paho.mqtt.client as mqtt
 from models.sensor import SensorDataIn
 from services.sensor_service import SensorService
 from core.database import init_db
-from shedulers.model_scheduler import model_scheduler
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +58,7 @@ class MQTTSensorClient:
             logger.error("Invalid sensor data format: %s. Error: %s", payload or "unknown", e)
         except (ConnectionError, OSError) as e:
             logger.error("Database connection error processing message: %s", e)
-        except Exception as e:
+        except RuntimeError as e:
             logger.error("Unexpected error processing message: %s", e)
 
     def on_log(self, _client, _userdata, _level, buf):
@@ -71,9 +70,6 @@ class MQTTSensorClient:
 
         init_db()
         logger.info("Database initialized")
-
-        model_scheduler.start_scheduler()
-        logger.info("Model scheduler started")
 
         self.client = mqtt.Client(client_id="rooty_esp32", transport="websockets")
         self.client.on_connect = self.on_connect
@@ -92,16 +88,14 @@ class MQTTSensorClient:
             self.stop()
         except (ConnectionError, OSError) as e:
             logger.error("Failed to connect to MQTT broker: %s", e)
-        except Exception as e:
+        except RuntimeError as e:
             logger.error("Error starting MQTT client: %s", e)
+            
 
     def stop(self):
         if self.client:
             self.client.disconnect()
             logger.info("MQTT client stopped")
-
-        model_scheduler.stop_scheduler()
-        logger.info("Model scheduler stopped")
 
 if __name__ == "__main__":
     mqtt_client = MQTTSensorClient()

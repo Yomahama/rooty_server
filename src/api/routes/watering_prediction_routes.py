@@ -2,7 +2,6 @@ from fastapi import APIRouter, HTTPException
 from models.watering_prediction import WateringPrediction
 from services.prediction_service import PredictionService
 from services.plant_service import PlantService
-from shedulers.model_scheduler import model_scheduler
 
 router = APIRouter(prefix="/api")
 prediction_service = PredictionService()
@@ -19,13 +18,6 @@ def get_watering_prediction(plant_id: int):
 
 @router.post("/predict/retrain")
 def retrain():
-    """Execute training manually"""
     readings = prediction_service.get_recent()
     prediction_service.train(readings)
     return {"status": "ok"}
-
-
-@router.get("/predict/model-status")
-def get_model_status():
-    """Get current model status and training information"""
-    return model_scheduler.get_model_status()
