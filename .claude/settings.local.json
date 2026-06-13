@@ -5,7 +5,16 @@
       "Bash(find /Users/rimaspauliukevicius/Desktop/projects/rooty_server/src -type f -name \"*.py\" -exec dirname {})",
       "Bash(rm -rf /Users/rimaspauliukevicius/Desktop/projects/rooty_server/src/shedulers)",
       "Bash(source .venv/bin/activate)",
-      "Bash(pylint src/)"
+      "Bash(pylint src/)",
+      "Bash(cat /Users/rimaspauliukevicius/Desktop/projects/rooty_server/requirements.txt)",
+      "Bash(cat /Users/rimaspauliukevicius/Desktop/projects/rooty_server/src/generate_data.py)",
+      "Bash(cat /Users/rimaspauliukevicius/Desktop/projects/rooty_server/src/mqtt_client.py)",
+      "Bash(cat /Users/rimaspauliukevicius/Desktop/projects/rooty_server/mqtt_client.py)",
+      "Bash(PYTHONPATH=src pylint src/)",
+      "Bash(PYTHONPATH=src python src/generate_data.py)",
+      "Bash(PYTHONPATH=src python src/presentation/visualize_moisture.py)",
+      "Bash(pip install matplotlib)",
+      "Bash(PYTHONPATH=src .venv/bin/python src/presentation/visualize_moisture.py)"
     ],
     "deny": [],
     "ask": []

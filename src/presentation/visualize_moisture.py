@@ -1,146 +1,125 @@
+import csv
+import os
+import sys
+from datetime import datetime
+
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from datetime import datetime
-import sys
-import os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from services.plant_service import PlantService
-from services.prediction_service import PredictionService
+from models.sensor import SensorDataOut  # pylint: disable=wrong-import-position
+from models.plant import Plant  # pylint: disable=wrong-import-position
+from services.plant_service import PlantService  # pylint: disable=wrong-import-position
+from services.prediction_service import PredictionService  # pylint: disable=wrong-import-position
+
+CSV_PATH = "mocked_data.csv"
 
 
-def visualize_moisture_prediction(plant_id: int = 1):
-    prediction_service = PredictionService()
-    plant_service = PlantService()
+def _load_csv(path: str) -> list[SensorDataOut]:
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"CSV not found: {path}. Run generate_data.py first.")
+    readings = []
+    with open(path, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            readings.append(SensorDataOut(
+                lux=float(row["lux"]),
+                temperature=float(row["temperature"]),
+                moisture=int(float(row["moisture"])),
+                battery=0,
+                humidity=float(row.get("humidity", 0.0)),
+                soil_temp=float(row.get("soil_temp", 0.0)),
+                timestamp=row["timestamp"],
+            ))
+    return readings
 
-    plant = plant_service.get_by_id(plant_id)
-    if not plant:
-        print(f"Plant {plant_id} not found!")
-        return
 
-    monthly_readings = prediction_service.get_recent(hours=24 * 30)
-    prediction = prediction_service.get_watering_prediction(plant)
-
-    print(f"Generating chart for Plant {plant_id}")
-    print(f"  Current moisture: {prediction.current_moisture}%")
-    print(f"  Monthly readings: {len(monthly_readings)}")
-    print(f"  Predicted points: {len(prediction.predicted)}")
-
+def _plot(plant: Plant, prediction, readings: list[SensorDataOut]) -> None:
     hist_timestamps = mdates.date2num(
-        [datetime.fromisoformat(r.timestamp) for r in monthly_readings])
-    hist_moisture = [r.moisture for r in monthly_readings]
-    hist_temp = [r.temperature for r in monthly_readings]
-    hist_lux = [r.lux for r in monthly_readings]
+        [datetime.fromisoformat(r.timestamp) for r in readings])
+    hist_moisture = [r.moisture for r in readings]
 
     pred_timestamps = mdates.date2num(
         [datetime.fromisoformat(p.timestamp) for p in prediction.predicted])
     pred_moisture = [p.value for p in prediction.predicted]
 
-    fig, ax_moist = plt.subplots(figsize=(16, 7), dpi=100)
+    _, ax = plt.subplots(figsize=(16, 7), dpi=100)
 
-    # Twin axes for temperature and lux
-    ax_temp = ax_moist.twinx()
-    ax_lux = ax_moist.twinx()
-    ax_lux.spines['right'].set_position(('outward', 70))
-
-    # --- Lux (thin line, historical only) ---
-    lux_line, = ax_lux.plot(
-        hist_timestamps, hist_lux,
-        color='#f59e0b', linewidth=0.8, alpha=0.6, label='Lux'
-    )
-    ax_lux.set_ylabel('Lux', color='#f59e0b', fontsize=10)
-    ax_lux.tick_params(axis='y', labelcolor='#f59e0b')
-    ax_lux.set_ylim(bottom=0)
-
-    # --- Temperature (thick line, historical only) ---
-    temp_line, = ax_temp.plot(
-        hist_timestamps, hist_temp,
-        color='#dc2626', linewidth=2.5, alpha=0.8, label='Temperature (°C)'
-    )
-    ax_temp.set_ylabel('Temperature (°C)', color='#dc2626', fontsize=10)
-    ax_temp.tick_params(axis='y', labelcolor='#dc2626')
-
-    # --- Moisture historical ---
-    moist_hist_line, = ax_moist.plot(
+    hist_line, = ax.plot(
         hist_timestamps, hist_moisture,
-        color='#2563eb', linewidth=1.8, alpha=0.9, label='Moisture (historical)'
+        color='#2563eb', linewidth=1.5, alpha=0.9, label='Moisture (historical)'
     )
-
-    # --- Moisture prediction ---
-    moist_pred_line, = ax_moist.plot(
+    pred_line, = ax.plot(
         pred_timestamps, pred_moisture,
-        color='#2563eb', linewidth=1.8, alpha=0.9, linestyle='--',
+        color='#2563eb', linewidth=1.5, alpha=0.9, linestyle='--',
         label='Moisture (predicted)'
     )
 
-    # --- Separator: historical / prediction ---
-    if len(hist_timestamps):
-        sep_mpl = float(hist_timestamps[-1])
-        ax_moist.axvline(
-            x=sep_mpl, color='#f59e0b', linestyle='-',
-            linewidth=2.5, alpha=0.8, label='Now'
-        )
+    if len(hist_timestamps) > 0:
+        ax.axvline(x=float(hist_timestamps[-1]), color='#f59e0b',
+                   linewidth=2.0, alpha=0.8, label='Now')
 
-    # --- Min / Max thresholds ---
-    ax_moist.axhline(
-        y=plant.moisture_min, color='#dc2626', linestyle=':',
-        linewidth=1.8, alpha=0.8, label=f'Min ({plant.moisture_min}%)'
-    )
-    ax_moist.axhline(
-        y=plant.moisture_max, color='#16a34a', linestyle=':',
-        linewidth=1.8, alpha=0.8, label=f'Max ({plant.moisture_max}%)'
-    )
+    ax.axhline(y=plant.moisture_min, color='#dc2626', linestyle=':',
+               linewidth=1.5, alpha=0.8, label=f'Min ({plant.moisture_min}%)')
+    ax.axhline(y=plant.moisture_max, color='#16a34a', linestyle=':',
+               linewidth=1.5, alpha=0.8, label=f'Max ({plant.moisture_max}%)')
 
-    # --- Styling ---
-    watering_text = (
-        f"{prediction.minutes_until_water // 60}h {prediction.minutes_until_water % 60}min"
-        if prediction.minutes_until_water else "not needed"
+    watering_text = f"in {prediction.hours_until_watering}h" if prediction.hours_until_watering else "not predicted"
+    ax.set_title(
+        f'{plant.name} — moisture forecast\n'
+        f'Current: {prediction.current_moisture}%  |  '
+        f'Confidence: {prediction.confidence or "n/a"}  |  '
+        f'Watering: {watering_text}',
+        fontsize=13, fontweight='bold', pad=14,
     )
-    ax_moist.set_title(
-        f'Plant {plant_id} — moisture, temperature, lux\n'
-        f'Current moisture: {prediction.current_moisture}%  |  '
-        f'Watering needed in: {watering_text}',
-        fontsize=13, fontweight='bold', pad=14
-    )
-    ax_moist.set_xlabel('Date', fontsize=11)
-    ax_moist.set_ylabel('Moisture (%)', color='#2563eb',
-                        fontsize=11, fontweight='bold')
-    ax_moist.tick_params(axis='y', labelcolor='#2563eb')
-    ax_moist.set_ylim(0, 100)
-    ax_moist.grid(True, alpha=0.25, linestyle='-', linewidth=0.5)
-
-    ax_moist.xaxis.set_major_locator(mdates.DayLocator(interval=3))
-    ax_moist.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
-    plt.setp(ax_moist.get_xticklabels(), rotation=45, ha='right')
-
-    # Combined legend (moisture axis owns it)
-    all_lines = [moist_hist_line, moist_pred_line, temp_line, lux_line]
-    ax_moist.legend(
-        handles=all_lines,
-        loc='upper left', frameon=True, fancybox=True, shadow=True, fontsize=10
-    )
+    ax.set_xlabel('Date', fontsize=11)
+    ax.set_ylabel('Moisture (%)', color='#2563eb', fontsize=11, fontweight='bold')
+    ax.tick_params(axis='y', labelcolor='#2563eb')
+    ax.set_ylim(0, 100)
+    ax.grid(True, alpha=0.25, linestyle='-', linewidth=0.5)
+    ax.xaxis.set_major_locator(mdates.DayLocator(interval=3))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
+    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+    ax.legend(handles=[hist_line, pred_line], loc='upper left',
+              frameon=True, fancybox=True, shadow=True, fontsize=10)
 
     plt.tight_layout()
     plt.show()
 
 
-def main():
+def visualize(plant_id: int = 1) -> None:
+    plant_service = PlantService()
+    prediction_service = PredictionService()
+
+    plant = plant_service.get_by_id(plant_id)
+    if not plant:
+        print(f"Plant {plant_id} not found in DB.")
+        return
+
+    readings = _load_csv(CSV_PATH)
+    prediction = prediction_service.predict_for_readings(plant, readings)
+
+    print(f"Plant: {plant.name}")
+    print(f"  Historical readings: {len(readings)}")
+    print(f"  Current moisture:    {prediction.current_moisture}%")
+    print(f"  Confidence:          {prediction.confidence or 'n/a'}")
+    print(f"  Watering in:         {prediction.hours_until_watering}h" if prediction.hours_until_watering else "  Watering:           not predicted")
+
+    _plot(plant, prediction, readings)
+
+
+def main() -> None:
     plant_id = 1
     if len(sys.argv) > 1:
         try:
             plant_id = int(sys.argv[1])
         except ValueError:
-            print("Invalid plant ID, using default plant ID = 1")
+            print("Invalid plant ID, using 1")
 
-    print(f"Starting moisture visualization for plant {plant_id}...")
     try:
-        visualize_moisture_prediction(plant_id)
+        visualize(plant_id)
     except FileNotFoundError as e:
-        print(f"File not found: {e}")
-        sys.exit(1)
-    except ImportError as e:
-        print(f"Import error: {e}")
+        print(e)
         sys.exit(1)
     except ValueError as e:
         print(f"Value error: {e}")

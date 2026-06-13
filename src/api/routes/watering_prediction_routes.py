@@ -1,23 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from models.watering_prediction import WateringPrediction
 from services.prediction_service import PredictionService
-from services.plant_service import PlantService
 
 router = APIRouter(prefix="/api")
 prediction_service = PredictionService()
-plant_service = PlantService()
 
 
-@router.get("/predict/watering/{plant_id}", response_model=WateringPrediction)
-def get_watering_prediction(plant_id: int):
-    plant = plant_service.get_by_id(plant_id)
-    if not plant:
-        raise HTTPException(status_code=404, detail="Augalas nerastas")
-    return prediction_service.get_watering_prediction(plant)
-
-
-@router.post("/predict/retrain")
-def retrain():
-    readings = prediction_service.get_recent()
-    prediction_service.train(readings)
-    return {"status": "ok"}
+@router.get("/prediction", response_model=WateringPrediction)
+def get_prediction():
+    return prediction_service.get_watering_prediction()

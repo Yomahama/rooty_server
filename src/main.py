@@ -5,6 +5,7 @@ from api.routes.sensor_routes import router as sensor_router
 from api.routes.plant_routes import router as plant_router
 from api.routes.dli_routes import router as dli_router
 from api.routes.watering_prediction_routes import router as watering_prediction_router
+from api.routes.device import router as device_router
 from generate_data import generate
 
 
@@ -20,3 +21,4 @@ app.include_router(sensor_router)
 app.include_router(plant_router)
 app.include_router(dli_router)
 app.include_router(watering_prediction_router)
+app.include_router(device_router)

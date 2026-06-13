@@ -26,7 +26,9 @@ def init_db():
             battery     INTEGER,
             humidity    REAL,
             soil_temp   REAL,
-            timestamp   TEXT
+            timestamp   TEXT,
+            device_id   TEXT,
+            plant_id    INTEGER
         )
     """)
 
@@ -43,11 +45,20 @@ def init_db():
         )
     """)
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS device_assignments (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            plant_id    INTEGER NOT NULL,
+            assigned_at TEXT NOT NULL,
+            FOREIGN KEY (plant_id) REFERENCES plants(id)
+        )
+    """)
+
     count = conn.execute("SELECT COUNT(*) FROM plants").fetchone()[0]
     if count == 0:
         conn.executemany(
-            """INSERT INTO plants 
-               (name, dli_min, dli_max, temp_min, temp_max, moisture_min, moisture_max) 
+            """INSERT INTO plants
+               (name, dli_min, dli_max, temp_min, temp_max, moisture_min, moisture_max)
                VALUES (?,?,?,?,?,?,?)""",
             DEFAULT_PLANTS
         )

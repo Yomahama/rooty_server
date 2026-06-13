@@ -8,6 +8,7 @@ class SensorDataIn(BaseModel):
     battery: int
     humidity: float
     soil_temp: float
+    device_id: str = "default"
 
 
 class SensorDataOut(SensorDataIn):

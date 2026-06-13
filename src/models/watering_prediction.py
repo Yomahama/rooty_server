@@ -7,7 +7,9 @@ class MoisturePoint(BaseModel):
 
 
 class WateringPrediction(BaseModel):
-    current_moisture: int
-    minutes_until_water: int | None
+    current_moisture: float | None
+    predicted_watering_time: str | None
+    hours_until_watering: float | None
+    confidence: str | None
     historical: list[MoisturePoint]
     predicted: list[MoisturePoint]

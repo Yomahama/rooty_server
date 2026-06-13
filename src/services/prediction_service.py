@@ -1,182 +1,182 @@
+import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-import os
-import numpy as np
-from keras.models import Sequential, load_model
-from keras.layers import LSTM, Dense
 from models.watering_prediction import MoisturePoint, WateringPrediction
 from models.plant import Plant
-from repos.prediction_repo import PredictionRepository
-from config.prediction_config import LSTMPredictionConfig, DEFAULT_LSTM_CONFIG
+from repos.sensor_repo import SensorRepository
+from repos.device_repo import DeviceRepository
+
+MAX_PREDICTION_DAYS = 7
+MIN_READINGS_AFTER_FILTER = 6
+WATERING_MOISTURE_JUMP = 10.0
+LOOKBACK_HOURS = 12
+PROJECTION_STEP_MINUTES = 30
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class RegressionResult:
+    t0: datetime
+    elapsed: list
+    slope: float
+    intercept: float
+    r_squared: float
+
+
+def _weighted_linear_regression(
+    x: list[float], y: list[float], weights: list[float]
+) -> tuple[float, float, float]:
+    w_sum = sum(weights)
+    wx_sum = sum(w * xi for w, xi in zip(weights, x))
+    wy_sum = sum(w * yi for w, yi in zip(weights, y))
+    wxx_sum = sum(w * xi * xi for w, xi in zip(weights, x))
+    wxy_sum = sum(w * xi * yi for w, xi, yi in zip(weights, x, y))
+
+    denom = w_sum * wxx_sum - wx_sum * wx_sum
+    if denom == 0:
+        return 0.0, wy_sum / w_sum, 0.0
+
+    slope = (w_sum * wxy_sum - wx_sum * wy_sum) / denom
+    intercept = (wy_sum - slope * wx_sum) / w_sum
+
+    y_mean = wy_sum / w_sum
+    ss_tot = sum(w * (yi - y_mean) ** 2 for w, yi in zip(weights, y))
+    ss_res = sum(w * (yi - (slope * xi + intercept)) ** 2 for w, xi, yi in zip(weights, x, y))
+    r_squared = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+
+    return slope, intercept, r_squared
+
+
+def _confidence_label(r_squared: float) -> str | None:
+    if r_squared >= 0.7:
+        return "high"
+    if r_squared >= 0.5:
+        return "medium"
+    if r_squared >= 0.3:
+        return "low"
+    return None
+
+
+def _build_projected_points(
+    t0: datetime, elapsed: list[float], slope: float, intercept: float, minutes_until_dry: float
+) -> list[MoisturePoint]:
+    cap_minutes = MAX_PREDICTION_DAYS * 24 * 60
+    projection_minutes = min(minutes_until_dry + PROJECTION_STEP_MINUTES, cap_minutes)
+    last_elapsed = elapsed[-1]
+    points = []
+    for t in range(0, int(projection_minutes), PROJECTION_STEP_MINUTES):
+        abs_t = last_elapsed + t
+        val = slope * abs_t + intercept
+        ts = (t0 + timedelta(minutes=abs_t)).isoformat()
+        points.append(MoisturePoint(value=round(val, 1), timestamp=ts))
+    return points
+
+
+def _compute_prediction_time(
+    t0: datetime, slope: float, intercept: float, moisture_min: float
+) -> tuple[str | None, float | None]:
+    minutes_until_dry = (moisture_min - intercept) / slope
+    now = datetime.now()
+    predicted_dt = t0 + timedelta(minutes=minutes_until_dry)
+    cap_dt = now + timedelta(days=MAX_PREDICTION_DAYS)
+    if now < predicted_dt <= cap_dt:
+        return predicted_dt.isoformat(), round((predicted_dt - now).total_seconds() / 3600.0, 1)
+    return None, None
+
+
+def _last_watering_index(readings: list) -> int:
+    idx = 0
+    for i in range(1, len(readings)):
+        if readings[i].moisture - readings[i - 1].moisture > WATERING_MOISTURE_JUMP:
+            idx = i
+    return idx
+
+
+def _fit_filtered_readings(filtered: list) -> RegressionResult:
+    t0 = datetime.fromisoformat(filtered[0].timestamp)
+    elapsed = [(datetime.fromisoformat(r.timestamp) - t0).total_seconds() / 60.0 for r in filtered]
+    moisture_vals = [float(r.moisture) for r in filtered]
+    n = len(filtered)
+    weights = [0.1 + 0.9 * i / (n - 1) for i in range(n)]
+    slope, intercept, r_squared = _weighted_linear_regression(elapsed, moisture_vals, weights)
+    return RegressionResult(t0=t0, elapsed=elapsed, slope=slope, intercept=intercept, r_squared=r_squared)
 
 
 class PredictionService:
-    def __init__(self, config: LSTMPredictionConfig = DEFAULT_LSTM_CONFIG):
-        self.config = config
-        self.config.validate()
-        self.repo = PredictionRepository()
+    def __init__(self):
+        self.sensor_repo = SensorRepository()
+        self.device_repo = DeviceRepository()
 
-    def _normalize_features(self, moisture: np.ndarray, temperature: np.ndarray, lux: np.ndarray) -> np.ndarray:
-        norm_cfg = self.config.normalization
-        norm_moisture = (moisture - norm_cfg.moisture_min) / \
-            (norm_cfg.moisture_max - norm_cfg.moisture_min)
-        norm_temperature = (temperature - norm_cfg.temperature_min) / \
-            (norm_cfg.temperature_max - norm_cfg.temperature_min)
-        norm_lux = (lux - norm_cfg.lux_min) / \
-            (norm_cfg.lux_max - norm_cfg.lux_min)
-        return np.stack([norm_moisture, norm_temperature, norm_lux], axis=-1)
+    def get_active_plant(self) -> Plant | None:
+        return self.device_repo.get_active_plant()
 
-    def _denormalize_moisture(self, values: np.ndarray) -> np.ndarray:
-        """Denormalize moisture predictions (we only predict moisture)"""
-        norm_cfg = self.config.normalization
-        return values * (norm_cfg.moisture_max - norm_cfg.moisture_min) + norm_cfg.moisture_min
-
-    def get_recent(self, hours: int = 24):
-        return self.repo.get_recent(hours)
-
-    def train(self, readings: list | None = None) -> None:
-        if readings is None:
-            readings = self.repo.get_all()
-
+    def predict_for_readings(self, plant: Plant, readings: list) -> WateringPrediction:
         if not readings:
-            raise ValueError("No readings provided for training")
+            return self._empty_prediction(None, [])
+        return self._predict_from_readings(plant, readings)
 
-        moisture = np.array([r.moisture for r in readings], dtype=float)
-        temperature = np.array([r.temperature for r in readings], dtype=float)
-        lux = np.array([r.lux for r in readings], dtype=float)
+    def _empty_prediction(self, current_moisture: float | None, readings: list) -> WateringPrediction:
+        return WateringPrediction(
+            current_moisture=current_moisture,
+            predicted_watering_time=None,
+            hours_until_watering=None,
+            confidence=None,
+            historical=[MoisturePoint(value=r.moisture, timestamp=r.timestamp) for r in readings],
+            predicted=[],
+        )
 
-        if len(moisture) <= self.config.hyperparameters.sequence_length:
-            raise ValueError(
-                f"Insufficient data: need at least {self.config.prediction.min_training_samples} readings, got {len(moisture)}")
+    def _apply_regression(
+        self, active_plant: Plant, reg: RegressionResult
+    ) -> tuple[str | None, float | None, list[MoisturePoint]]:
+        if reg.r_squared < 0.3 or reg.slope >= 0:
+            return None, None, []
+        target = float(active_plant.moisture_min)
+        predicted_watering_time, hours_until_watering = _compute_prediction_time(
+            reg.t0, reg.slope, reg.intercept, target
+        )
+        minutes_until_dry = (target - reg.intercept) / reg.slope
+        predicted_points = _build_projected_points(
+            reg.t0, reg.elapsed, reg.slope, reg.intercept, minutes_until_dry
+        )
+        return predicted_watering_time, hours_until_watering, predicted_points
 
-        features = self._normalize_features(moisture, temperature, lux)
+    def _predict_from_readings(self, active_plant: Plant, readings: list) -> WateringPrediction:
+        filtered = readings[_last_watering_index(readings):]
+        current_moisture = float(readings[-1].moisture)
 
-        target_moisture = moisture[self.config.hyperparameters.sequence_length:]
-        norm_cfg = self.config.normalization
-        target_moisture = (target_moisture - norm_cfg.moisture_min) / \
-            (norm_cfg.moisture_max - norm_cfg.moisture_min)
+        if len(filtered) < MIN_READINGS_AFTER_FILTER:
+            return self._empty_prediction(current_moisture, readings)
 
-        x, y = [], []
-        seq_len = self.config.hyperparameters.sequence_length
-        for i in range(len(features) - seq_len):
-            x.append(features[i:i + seq_len])
-            y.append(target_moisture[i])
-
-        x_array = np.array(x)
-        y_array = np.array(y)
-
-        hyper = self.config.hyperparameters
-        model = Sequential([
-            LSTM(hyper.lstm_units_1, input_shape=(hyper.sequence_length, hyper.feature_count),
-                 return_sequences=True),
-            LSTM(hyper.lstm_units_2),
-            Dense(hyper.dense_units, activation='relu'),
-            Dense(1)
-        ])
-        model.compile(optimizer=hyper.optimizer, loss=hyper.loss,
-                      metrics=list(hyper.metrics))
-        model.fit(x_array, y_array, epochs=hyper.epochs, batch_size=hyper.batch_size,
-                  verbose="1", validation_split=hyper.validation_split)
-        model.save(self.config.model_path)
-
-    def _expected_conditions_at(self, dt: datetime) -> tuple[float, float]:
-        """Estimate temperature and lux at a future datetime based on time of day."""
-        time_of_day = dt.hour + dt.minute / 60.0
-
-        if 7.0 <= time_of_day <= 21.0:
-            temp = 19.0 + 7.0 * np.sin(np.pi * (time_of_day - 7.0) / 14.0)
-        else:
-            temp = 19.5
-
-        if 7.0 <= time_of_day <= 19.0:
-            lux = max(0.0, np.sin(np.pi * (time_of_day - 7.0) / 12.0) * 4000.0)
-        else:
-            lux = 5.0
-
-        return float(temp), float(lux)
-
-    def _normalize_temp_lux(self, temp: float, lux: float) -> tuple[float, float]:
-        norm_cfg = self.config.normalization
-        norm_temp = (temp - norm_cfg.temperature_min) / \
-            (norm_cfg.temperature_max - norm_cfg.temperature_min)
-        norm_lux = (lux - norm_cfg.lux_min) / \
-            (norm_cfg.lux_max - norm_cfg.lux_min)
-        return norm_temp, norm_lux
-
-    def predict(self, readings: list) -> list[float]:
-        model = load_model(self.config.model_path)
-
-        seq_len = self.config.hyperparameters.sequence_length
-        recent_readings = readings[-seq_len:]
-        if len(recent_readings) < seq_len:
-            raise ValueError(
-                f"Need at least {seq_len} readings for prediction, got {len(recent_readings)}")
-
-        moisture = np.array([r.moisture for r in recent_readings], dtype=float)
-        temperature = np.array(
-            [r.temperature for r in recent_readings], dtype=float)
-        lux = np.array([r.lux for r in recent_readings], dtype=float)
-
-        features = self._normalize_features(moisture, temperature, lux)
-
-        last_timestamp = datetime.fromisoformat(recent_readings[-1].timestamp)
-        interval_minutes = self.config.prediction.interval_minutes
-
-        predictions = []
-        current_features = features.copy()
-
-        for step in range(self.config.prediction.horizon_steps):
-            x = current_features[-seq_len:].reshape(
-                (1, seq_len, self.config.hyperparameters.feature_count))
-            next_moisture = model.predict(x, verbose=0)[0][0]  # type: ignore
-
-            actual_moisture = float(
-                self._denormalize_moisture(np.array([next_moisture]))[0])
-            predictions.append(round(actual_moisture, 1))
-
-            future_dt = last_timestamp + \
-                timedelta(minutes=(step + 1) * interval_minutes)
-            future_temp, future_lux = self._expected_conditions_at(future_dt)
-            norm_temp, norm_lux = self._normalize_temp_lux(
-                future_temp, future_lux)
-
-            next_feature_vector = np.array(
-                [next_moisture, norm_temp, norm_lux])
-            current_features = np.vstack(
-                [current_features, next_feature_vector])
-
-        return predictions
-
-    def get_watering_prediction(self, plant: Plant) -> WateringPrediction:
-        readings = self.repo.get_recent(hours=24)
-
-        if not os.path.exists(self.config.model_path):
-            print("🔄 No model found, training for first time...")
-            self.train()
-
-        predicted = self.predict(readings)
-
-        interval_minutes = self.config.prediction.interval_minutes
-        minutes_until_water = None
-        for i, val in enumerate(predicted):
-            if val < plant.moisture_min:
-                minutes_until_water = (i + 1) * interval_minutes
-                break
-
-        last_reading_time = datetime.fromisoformat(readings[-1].timestamp)
+        reg = _fit_filtered_readings(filtered)
+        predicted_watering_time, hours_until_watering, predicted_points = self._apply_regression(
+            active_plant, reg
+        )
 
         return WateringPrediction(
-            current_moisture=readings[-1].moisture,
-            minutes_until_water=minutes_until_water,
-            historical=[
-                MoisturePoint(value=r.moisture, timestamp=r.timestamp)
-                for r in readings
-            ],
-            predicted=[
-                MoisturePoint(
-                    value=val,
-                    timestamp=(last_reading_time +
-                               timedelta(minutes=(i + 1) * interval_minutes)).isoformat()
-                )
-                for i, val in enumerate(predicted)
-            ],
+            current_moisture=current_moisture,
+            predicted_watering_time=predicted_watering_time,
+            hours_until_watering=hours_until_watering,
+            confidence=_confidence_label(reg.r_squared),
+            historical=[MoisturePoint(value=r.moisture, timestamp=r.timestamp) for r in readings],
+            predicted=predicted_points,
         )
+
+    def get_watering_prediction(self, plant: Plant | None = None) -> WateringPrediction:
+        active_plant = plant or self.device_repo.get_active_plant()
+
+        if not active_plant:
+            return WateringPrediction(
+                current_moisture=None,
+                predicted_watering_time=None,
+                hours_until_watering=None,
+                confidence=None,
+                historical=[],
+                predicted=[],
+            )
+
+        readings = self.sensor_repo.get_recent_by_plant(active_plant.id, LOOKBACK_HOURS)
+        if not readings:
+            return self._empty_prediction(None, [])
+
+        return self._predict_from_readings(active_plant, readings)
