@@ -24,7 +24,7 @@ class SensorService:
             timestamp, data.lux, data.temperature, data.moisture,
             data.battery, data.humidity, data.soil_temp,
         )
-        if active_plant:
+        if active_plant and data.moisture is not None:
             if data.moisture < active_plant.moisture_min:
                 self.notification_service.send_low_moisture_alert(
                     active_plant.name, float(data.moisture), float(active_plant.moisture_min)
