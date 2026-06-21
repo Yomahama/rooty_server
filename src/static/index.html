@@ -157,6 +157,106 @@
       color: #f8fafc;
     }
 
+    .battery-section {
+      margin-bottom: 32px;
+    }
+
+    .battery-card {
+      background: #1e2330;
+      border: 1px solid #2d3448;
+      border-radius: 12px;
+      padding: 20px 24px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    .battery-card:hover {
+      border-color: #22c55e;
+    }
+
+    .battery-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .battery-bar-wrap {
+      background: #0f1117;
+      border-radius: 6px;
+      height: 10px;
+      overflow: hidden;
+    }
+
+    .battery-bar {
+      height: 100%;
+      border-radius: 6px;
+      background: #22c55e;
+      transition: width 0.4s, background 0.4s;
+    }
+
+    .battery-hint {
+      font-size: 0.7rem;
+      color: #4b5563;
+      margin-top: 8px;
+    }
+
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.open {
+      display: flex;
+    }
+
+    .modal-box {
+      background: #1e2330;
+      border: 1px solid #2d3448;
+      border-radius: 16px;
+      padding: 28px;
+      width: 90%;
+      max-width: 800px;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .modal-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: #64748b;
+      font-size: 1.4rem;
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .modal-close:hover {
+      color: #f8fafc;
+    }
+
+    .modal-chart-wrap {
+      position: relative;
+      height: 280px;
+    }
+
     .plants-section {
       margin-bottom: 32px;
     }
@@ -383,9 +483,29 @@
     <div class="chart-title">Light (lux)</div>
     <div class="chart-wrap"><canvas id="chart-lux"></canvas></div>
   </div>
-  <div class="chart-card">
-    <div class="chart-title">Battery (%)</div>
-    <div class="chart-wrap"><canvas id="chart-battery"></canvas></div>
+</div>
+
+<div class="battery-section">
+  <div class="section-label">Battery</div>
+  <div class="battery-card" id="battery-card" onclick="openBatteryModal()">
+    <div class="battery-header">
+      <span class="chart-title" style="margin-bottom:0">Battery level</span>
+      <span id="battery-pct-label" style="font-size:1rem;font-weight:700;color:#22c55e">—%</span>
+    </div>
+    <div class="battery-bar-wrap">
+      <div class="battery-bar" id="battery-bar" style="width:0%"></div>
+    </div>
+    <div class="battery-hint">Click to view history</div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="battery-modal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">Battery history (%)</span>
+      <button class="modal-close" onclick="closeBatteryModal()">&#x2715;</button>
+    </div>
+    <div class="modal-chart-wrap"><canvas id="chart-battery"></canvas></div>
   </div>
 </div>
 
@@ -499,6 +619,19 @@
     ]),
   };
 
+  function openBatteryModal() {
+    document.getElementById("battery-modal").classList.add("open");
+    charts.battery.resize();
+  }
+
+  function closeBatteryModal() {
+    document.getElementById("battery-modal").classList.remove("open");
+  }
+
+  document.getElementById("battery-modal").addEventListener("click", function(e) {
+    if (e.target === this) closeBatteryModal();
+  });
+
   function fmt(ts) {
     const d = new Date(ts);
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -529,6 +662,9 @@
     charts.battery.data.datasets[0].data = rows.map(r => r.battery);
 
     Object.values(charts).forEach(c => c.update());
+
+    const lastBattery = rows.length ? rows[rows.length - 1].battery : null;
+    updateBatteryBar(lastBattery);
   }
 
   function applyLatest(d) {
@@ -538,6 +674,7 @@
     setVal("soil_temp", d.soil_temp != null ? d.soil_temp.toFixed(1) : null);
     setVal("lux", d.lux != null ? Math.round(d.lux) : null);
     setVal("battery", d.battery);
+    updateBatteryBar(d.battery);
 
     const ts = new Date(d.timestamp).toLocaleTimeString();
     document.getElementById("status-text").textContent = "Updated " + ts;
@@ -657,6 +794,25 @@
     } catch {
       document.getElementById("status-dot").style.background = "#ef4444";
       document.getElementById("status-text").textContent = "Connection error";
+    }
+  }
+
+  function updateBatteryBar(value) {
+    const bar = document.getElementById("battery-bar");
+    const label = document.getElementById("battery-pct-label");
+    if (value == null) return;
+    const pct = Math.min(100, Math.max(0, value));
+    bar.style.width = pct + "%";
+    label.textContent = pct + "%";
+    if (pct > 50) {
+      bar.style.background = "#22c55e";
+      label.style.color = "#22c55e";
+    } else if (pct > 20) {
+      bar.style.background = "#facc15";
+      label.style.color = "#facc15";
+    } else {
+      bar.style.background = "#ef4444";
+      label.style.color = "#ef4444";
     }
   }
 
