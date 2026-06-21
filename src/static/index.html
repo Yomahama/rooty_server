@@ -72,6 +72,36 @@
       border: 1px solid #2d3448;
       border-radius: 12px;
       padding: 16px 20px;
+      transition: border-color 0.3s;
+    }
+
+    .stat-card.alert-low {
+      border-color: #ef4444;
+    }
+
+    .stat-card.alert-high {
+      border-color: #f97316;
+    }
+
+    .alert-badge {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-top: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .alert-badge.low {
+      background: rgba(239,68,68,0.15);
+      color: #ef4444;
+    }
+
+    .alert-badge.high {
+      background: rgba(249,115,22,0.15);
+      color: #f97316;
     }
 
     .stat-label {
@@ -92,6 +122,41 @@
       font-size: 0.9rem;
       color: #94a3b8;
       margin-left: 2px;
+    }
+
+    .history-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .time-filters {
+      display: flex;
+      gap: 6px;
+    }
+
+    .time-btn {
+      background: #1e2330;
+      border: 1px solid #2d3448;
+      border-radius: 6px;
+      color: #64748b;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .time-btn:hover {
+      border-color: #3b82f6;
+      color: #93c5fd;
+    }
+
+    .time-btn.active {
+      border-color: #3b82f6;
+      color: #3b82f6;
+      background: rgba(59,130,246,0.08);
     }
 
     .charts-grid {
@@ -469,7 +534,15 @@
   <div class="chart-wrap" style="height:240px"><canvas id="chart-prediction"></canvas></div>
 </div>
 
-<div class="section-label">History</div>
+<div class="history-header">
+  <div class="section-label" style="margin-bottom:0">History</div>
+  <div class="time-filters">
+    <button class="time-btn" data-hours="1">1h</button>
+    <button class="time-btn" data-hours="6">6h</button>
+    <button class="time-btn" data-hours="24">24h</button>
+    <button class="time-btn active" data-hours="0">All</button>
+  </div>
+</div>
 <div class="charts-grid">
   <div class="chart-card">
     <div class="chart-title">Moisture &amp; Humidity (%)</div>
@@ -602,6 +675,8 @@
     confEl.style.color = p.confidence ? (confidenceColors[p.confidence] || "#f8fafc") : "#f8fafc";
   }
 
+  let activePlantRanges = null;
+
   const charts = {
     moisture: makeChart("chart-moisture", [
       { label: "Moisture", data: [], borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,0.08)", tension: 0.3, pointRadius: 2, fill: true },
@@ -619,6 +694,51 @@
     ]),
   };
 
+  function applyMoistureAnnotations() {
+    const chart = charts.moisture;
+    const datasets = chart.data.datasets;
+
+    const existingMin = datasets.findIndex(d => d._isMoistureMin);
+    const existingMax = datasets.findIndex(d => d._isMoistureMax);
+    if (existingMin >= 0) datasets.splice(existingMin, 1);
+    const maxIdx = datasets.findIndex(d => d._isMoistureMax);
+    if (maxIdx >= 0) datasets.splice(maxIdx, 1);
+
+    if (!activePlantRanges || !chart.data.labels.length) {
+      chart.update();
+      return;
+    }
+
+    const count = chart.data.labels.length;
+    const minLine = Array(count).fill(activePlantRanges.moisture_min);
+    const maxLine = Array(count).fill(activePlantRanges.moisture_max);
+
+    datasets.push({
+      label: "Min threshold",
+      data: minLine,
+      borderColor: "rgba(239,68,68,0.5)",
+      borderDash: [4, 4],
+      borderWidth: 1,
+      pointRadius: 0,
+      fill: false,
+      tension: 0,
+      _isMoistureMin: true,
+    });
+    datasets.push({
+      label: "Max threshold",
+      data: maxLine,
+      borderColor: "rgba(249,115,22,0.5)",
+      borderDash: [4, 4],
+      borderWidth: 1,
+      pointRadius: 0,
+      fill: false,
+      tension: 0,
+      _isMoistureMax: true,
+    });
+
+    chart.update();
+  }
+
   function openBatteryModal() {
     document.getElementById("battery-modal").classList.add("open");
     charts.battery.resize();
@@ -632,8 +752,14 @@
     if (e.target === this) closeBatteryModal();
   });
 
-  function fmt(ts) {
+  let currentHoursFilter = 0;
+
+  function fmt(ts, forceDate) {
     const d = new Date(ts);
+    if (forceDate || currentHoursFilter > 6) {
+      return d.toLocaleDateString([], { month: "2-digit", day: "2-digit" }) + " " +
+        d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
@@ -661,7 +787,8 @@
     charts.battery.data.labels = labels;
     charts.battery.data.datasets[0].data = rows.map(r => r.battery);
 
-    Object.values(charts).forEach(c => c.update());
+    [charts.temperature, charts.lux, charts.battery].forEach(c => c.update());
+    applyMoistureAnnotations();
 
     const lastBattery = rows.length ? rows[rows.length - 1].battery : null;
     updateBatteryBar(lastBattery);
@@ -675,12 +802,38 @@
     setVal("lux", d.lux != null ? Math.round(d.lux) : null);
     setVal("battery", d.battery);
     updateBatteryBar(d.battery);
+    updateMoistureAlert(d.moisture);
 
     const ts = new Date(d.timestamp).toLocaleTimeString();
     document.getElementById("status-text").textContent = "Updated " + ts;
   }
 
+  function updateMoistureAlert(moisture) {
+    const card = document.getElementById("val-moisture").closest(".stat-card");
+    let badge = card.querySelector(".alert-badge");
+
+    card.classList.remove("alert-low", "alert-high");
+    if (badge) badge.remove();
+
+    if (moisture == null || !activePlantRanges) return;
+
+    if (moisture < activePlantRanges.moisture_min) {
+      card.classList.add("alert-low");
+      badge = document.createElement("div");
+      badge.className = "alert-badge low";
+      badge.textContent = "Too dry";
+      card.appendChild(badge);
+    } else if (moisture > activePlantRanges.moisture_max) {
+      card.classList.add("alert-high");
+      badge = document.createElement("div");
+      badge.className = "alert-badge high";
+      badge.textContent = "Too wet";
+      card.appendChild(badge);
+    }
+  }
+
   let activePlantId = null;
+
 
   async function assignPlant(plantId, btn) {
     btn.disabled = true;
@@ -757,6 +910,8 @@
 
       window._plants = plants;
       activePlantId = currentPlant ? currentPlant.id : null;
+      activePlantRanges = currentPlant || null;
+      applyMoistureAnnotations();
 
       const dliResults = await Promise.all(
         plants.map(p =>
@@ -773,10 +928,19 @@
     }
   }
 
+  function buildHistoryUrl() {
+    if (currentHoursFilter === 0) {
+      return `${API_BASE}/api/history?limit=${HISTORY_LIMIT}`;
+    }
+    const to = new Date();
+    const from = new Date(to.getTime() - currentHoursFilter * 60 * 60 * 1000);
+    return `${API_BASE}/api/history?from_time=${from.toISOString()}&to_time=${to.toISOString()}`;
+  }
+
   async function refresh() {
     try {
       const [history, latest, prediction] = await Promise.all([
-        fetch(`${API_BASE}/api/history?limit=${HISTORY_LIMIT}`).then(r => r.json()),
+        fetch(buildHistoryUrl()).then(r => r.json()),
         fetch(`${API_BASE}/api/latest`).then(r => r.ok ? r.json() : null),
         fetch(`${API_BASE}/api/prediction`).then(r => r.ok ? r.json() : null),
       ]);
@@ -815,6 +979,15 @@
       label.style.color = "#ef4444";
     }
   }
+
+  document.querySelectorAll(".time-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".time-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      currentHoursFilter = parseInt(btn.dataset.hours);
+      refresh();
+    });
+  });
 
   loadPlants();
   refresh();

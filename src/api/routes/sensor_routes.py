@@ -27,5 +27,7 @@ def get_latest():
 
 
 @router.get("/history", response_model=list[SensorDataOut])
-def get_history(limit: int = 50):
+def get_history(limit: int = 50, from_time: str | None = None, to_time: str | None = None):
+    if from_time and to_time:
+        return sensor_service.get_by_timerange(from_time, to_time)
     return sensor_service.get_history(limit)
