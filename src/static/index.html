@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rooty Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #f8fafc;
+      letter-spacing: -0.02em;
+    }
+
+    #status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: #94a3b8;
+    }
+
+    #status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background: #1e2330;
+      border: 1px solid #2d3448;
+      border-radius: 12px;
+      padding: 16px 20px;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+
+    .stat-value {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+
+    .stat-unit {
+      font-size: 0.9rem;
+      color: #94a3b8;
+      margin-left: 2px;
+    }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+      gap: 20px;
+    }
+
+    .chart-card {
+      background: #1e2330;
+      border: 1px solid #2d3448;
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+
+    .chart-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 16px;
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 200px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🌱 Rooty Dashboard</h1>
+  <div id="status">
+    <div id="status-dot"></div>
+    <span id="status-text">Connecting…</span>
+  </div>
+</header>
+
+<div class="stats-row">
+  <div class="stat-card">
+    <div class="stat-label">Moisture</div>
+    <div class="stat-value" id="val-moisture">—<span class="stat-unit">%</span></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Humidity</div>
+    <div class="stat-value" id="val-humidity">—<span class="stat-unit">%</span></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Air Temp</div>
+    <div class="stat-value" id="val-temperature">—<span class="stat-unit">°C</span></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Soil Temp</div>
+    <div class="stat-value" id="val-soil_temp">—<span class="stat-unit">°C</span></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Light</div>
+    <div class="stat-value" id="val-lux">—<span class="stat-unit">lx</span></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Battery</div>
+    <div class="stat-value" id="val-battery">—<span class="stat-unit">%</span></div>
+  </div>
+</div>
+
+<div class="charts-grid">
+  <div class="chart-card">
+    <div class="chart-title">Moisture &amp; Humidity (%)</div>
+    <div class="chart-wrap"><canvas id="chart-moisture"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Temperature (°C)</div>
+    <div class="chart-wrap"><canvas id="chart-temperature"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Light (lux)</div>
+    <div class="chart-wrap"><canvas id="chart-lux"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Battery (%)</div>
+    <div class="chart-wrap"><canvas id="chart-battery"></canvas></div>
+  </div>
+</div>
+
+<script>
+  const API_BASE = window.location.origin;
+  const POLL_MS = 3000;
+  const HISTORY_LIMIT = 100;
+
+  const chartDefaults = {
+    type: "line",
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: { legend: { labels: { color: "#94a3b8", boxWidth: 12, font: { size: 12 } } } },
+      scales: {
+        x: {
+          ticks: { color: "#4b5563", maxTicksLimit: 8, maxRotation: 0, font: { size: 11 } },
+          grid: { color: "#1f2937" },
+        },
+        y: {
+          ticks: { color: "#4b5563", font: { size: 11 } },
+          grid: { color: "#1f2937" },
+        },
+      },
+    },
+  };
+
+  function makeChart(id, datasets) {
+    return new Chart(document.getElementById(id), {
+      ...chartDefaults,
+      data: { labels: [], datasets },
+    });
+  }
+
+  const charts = {
+    moisture: makeChart("chart-moisture", [
+      { label: "Moisture", data: [], borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,0.08)", tension: 0.3, pointRadius: 2, fill: true },
+      { label: "Humidity", data: [], borderColor: "#a78bfa", backgroundColor: "rgba(167,139,250,0.08)", tension: 0.3, pointRadius: 2, fill: true },
+    ]),
+    temperature: makeChart("chart-temperature", [
+      { label: "Air", data: [], borderColor: "#f97316", backgroundColor: "rgba(249,115,22,0.08)", tension: 0.3, pointRadius: 2, fill: true },
+      { label: "Soil", data: [], borderColor: "#fbbf24", backgroundColor: "rgba(251,191,36,0.08)", tension: 0.3, pointRadius: 2, fill: true },
+    ]),
+    lux: makeChart("chart-lux", [
+      { label: "Lux", data: [], borderColor: "#facc15", backgroundColor: "rgba(250,204,21,0.08)", tension: 0.3, pointRadius: 2, fill: true },
+    ]),
+    battery: makeChart("chart-battery", [
+      { label: "Battery", data: [], borderColor: "#22c55e", backgroundColor: "rgba(34,197,94,0.08)", tension: 0.3, pointRadius: 2, fill: true },
+    ]),
+  };
+
+  function fmt(ts) {
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function setVal(id, value) {
+    const el = document.getElementById("val-" + id);
+    const unit = el.querySelector(".stat-unit");
+    el.childNodes[0].textContent = value != null ? value : "—";
+    if (unit) el.appendChild(unit);
+  }
+
+  function applyHistory(rows) {
+    const labels = rows.map(r => fmt(r.timestamp));
+
+    charts.moisture.data.labels = labels;
+    charts.moisture.data.datasets[0].data = rows.map(r => r.moisture);
+    charts.moisture.data.datasets[1].data = rows.map(r => r.humidity);
+
+    charts.temperature.data.labels = labels;
+    charts.temperature.data.datasets[0].data = rows.map(r => r.temperature);
+    charts.temperature.data.datasets[1].data = rows.map(r => r.soil_temp);
+
+    charts.lux.data.labels = labels;
+    charts.lux.data.datasets[0].data = rows.map(r => r.lux);
+
+    charts.battery.data.labels = labels;
+    charts.battery.data.datasets[0].data = rows.map(r => r.battery);
+
+    Object.values(charts).forEach(c => c.update());
+  }
+
+  function applyLatest(d) {
+    setVal("moisture", d.moisture);
+    setVal("humidity", d.humidity != null ? d.humidity.toFixed(1) : null);
+    setVal("temperature", d.temperature != null ? d.temperature.toFixed(1) : null);
+    setVal("soil_temp", d.soil_temp != null ? d.soil_temp.toFixed(1) : null);
+    setVal("lux", d.lux != null ? Math.round(d.lux) : null);
+    setVal("battery", d.battery);
+
+    const ts = new Date(d.timestamp).toLocaleTimeString();
+    document.getElementById("status-text").textContent = "Updated " + ts;
+  }
+
+  async function refresh() {
+    try {
+      const [history, latest] = await Promise.all([
+        fetch(`${API_BASE}/api/history?limit=${HISTORY_LIMIT}`).then(r => r.json()),
+        fetch(`${API_BASE}/api/latest`).then(r => r.json()),
+      ]);
+      applyHistory([...history].reverse());
+      applyLatest(latest);
+      document.getElementById("status-dot").style.background = "#22c55e";
+    } catch {
+      document.getElementById("status-dot").style.background = "#ef4444";
+      document.getElementById("status-text").textContent = "Connection error";
+    }
+  }
+
+  refresh();
+  setInterval(refresh, POLL_MS);
+</script>
+</body>
+</html>

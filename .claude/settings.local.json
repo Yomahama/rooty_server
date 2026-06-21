@@ -14,7 +14,9 @@
       "Bash(PYTHONPATH=src python src/generate_data.py)",
       "Bash(PYTHONPATH=src python src/presentation/visualize_moisture.py)",
       "Bash(pip install matplotlib)",
-      "Bash(PYTHONPATH=src .venv/bin/python src/presentation/visualize_moisture.py)"
+      "Bash(PYTHONPATH=src .venv/bin/python src/presentation/visualize_moisture.py)",
+      "Bash(curl -s http://localhost:8001/docs)",
+      "Bash(PYTHONPATH=src pylint src/models/sensor.py src/services/sensor_service.py)"
     ],
     "deny": [],
     "ask": []
